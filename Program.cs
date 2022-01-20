@@ -1,8 +1,14 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
+//aplicação starta
 // responsavel por criar o hosting -> aplicacao web.
 var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddDbContext<ApplicationDbContext>();
+
 var app = builder.Build();
+var configuration = app.Configuration;
+ProductRepository.Init(configuration);
 
 
 //criando um endpoint que acessa o nome de um usuario;
@@ -67,10 +73,22 @@ app.MapDelete("/products/{code}", ([FromRoute] string code)=> {
   return Results.Ok();
 });
 
+        if(app.Environment.IsStaging())
+       //configuração de aplicacao, onde guarda a string de conexão.
+        app.MapGet("/configuration/database", (IConfiguration configuration)=> {
+        //return Results.Ok(configuration["database:connection"]);
+        return Results.Ok($"{configuration["database:connection"]}/{configuration["database:port"]}");
+        }); 
+
 app.Run();
 
 public static class ProductRepository {
-    public static List <Product> Products {get; set;}
+    public static List <Product> Products {get; set;} = Products = new List<Product>();
+
+    public static void Init(IConfiguration configuration){
+        var products = configuration.GetSection("Products").Get<List<Product>>();
+        Products = products;
+    }
 
     public static void Add(Product product){
         if(Products == null)
@@ -88,8 +106,36 @@ public static class ProductRepository {
  }
 
 public class Product {
+
+
+   //no entity frameworkcore entende que toda propriedade com id é uma primary key na tabela
+    public int Id {get; set;}
     public string Code { get; set; }
     public string Name { get; set; }
+    public string Description {get; set;}
 }
 
 
+//essa aplicação faz todo processo de configuração da aplicacao com o banco de dados.
+public class ApplicationDbContext : DbContext {
+     
+     public DbSet<Product> Products { get; set; }
+
+
+//aqui serve para adicionar o tamanho maximo de uma entidade e se ela é obrigatoria ou não
+//cduvidas.
+     protected override void OnModelCreating(ModelBuilder builder)
+     { 
+         builder.Entity<Product>()
+         .Property( p=> p.Description).HasMaxLength(500).IsRequired(false);
+          builder.Entity<Product>()
+         .Property(p=> p.Name).HasMaxLength(100).IsRequired();
+          builder.Entity<Product>()
+         .Property(p=> p.Code).HasMaxLength(20).IsRequired();
+     }
+
+
+//NECESSARIO PARA CONECTAR O SQL SERVER
+     protected override void OnConfiguring(DbContextOptionsBuilder options)
+     => options.UseSqlServer("Server=localhost;Database=IWantDb; User Id=sa;Password=1@2b3c4?ana;MultipleActiveResultSets=true;Encrypt=YES;TrustServerCertificate=YES");
+}
